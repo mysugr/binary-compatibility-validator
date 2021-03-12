@@ -83,8 +83,9 @@ private fun Project.configureKotlinCompilation(
     val projectName = project.name
     val apiBuildDir = file(buildDir.resolve(API_DIR))
     val apiBuild = task<KotlinApiBuildTask>("apiBuild", extension) {
-        // Do not enable task for empty umbrella modules
-        isEnabled = apiCheckEnabled(extension) && compilation.allKotlinSourceSets.any { it.kotlin.srcDirs.any { it.exists() } }
+        // Do not execute task for empty umbrella modules
+        onlyIf { compilation.allKotlinSourceSets.any { it.kotlin.srcDirs.any { it.exists() } } }
+        isEnabled = apiCheckEnabled(extension)
         // 'group' is not specified deliberately so it will be hidden from ./gradlew tasks
         description =
             "Builds Kotlin API for 'main' compilations of $projectName. Complementary task and shouldn't be called manually"
@@ -131,7 +132,9 @@ private fun Project.configureCheckTasks(
     val projectName = project.name
     val apiCheckDir = file(projectDir.resolve(API_DIR))
     val apiCheck = task<ApiCompareCompareTask>("apiCheck") {
-        isEnabled = apiCheckEnabled(extension) && apiBuild.map { it.enabled }.getOrElse(true)
+        // Do not execute task for empty umbrella modules
+        onlyIf { apiBuild.get().isOnlyIf() }
+        isEnabled = apiCheckEnabled(extension)
         group = "verification"
         description = "Checks signatures of public API against the golden value in API folder for $projectName"
         projectApiDir = if (apiCheckDir.exists()) {
@@ -145,7 +148,9 @@ private fun Project.configureCheckTasks(
     }
 
     task<Sync>("apiDump") {
-        isEnabled = apiCheckEnabled(extension) && apiBuild.map { it.enabled }.getOrElse(true)
+        // Do not execute task for empty umbrella modules
+        onlyIf { apiBuild.get().isOnlyIf() }
+        isEnabled = apiCheckEnabled(extension)
         group = "other"
         description = "Syncs API from build dir to $API_DIR dir for $projectName"
         from(apiBuildDir)
@@ -157,6 +162,8 @@ private fun Project.configureCheckTasks(
     }
     project.tasks.getByName("check").dependsOn(apiCheck)
 }
+
+private fun KotlinApiBuildTask.isOnlyIf(): Boolean = onlyIf.isSatisfiedBy(this)
 
 inline fun <reified T : Task> Project.task(
     name: String,
